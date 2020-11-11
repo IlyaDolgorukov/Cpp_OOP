@@ -24,7 +24,7 @@ public:
 class Hand {
 private:
     vector<Card*> m_Cards;
-    int optimalAceCount(int cnt, int total) {
+    int optimalAceCount(int cnt, int total) const {
         int count = cnt * 11;
         if ((total + count) > 21) {
             for (int i = 1; i <= cnt; i++) {
@@ -64,6 +64,20 @@ public:
         }
         
         return total;
+    }
+};
+
+class GenericPlayer : public Hand {
+private:
+    string name;
+public:
+    GenericPlayer(string n): name(n) { }
+    virtual void IsHitting() = 0;
+    bool IsBoosted() {
+        return GetTotal() > 21;
+    }
+    void Bust() const {
+        cout << "Player " << name << " has Boost!" << endl;
     }
 };
 
