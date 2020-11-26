@@ -1,5 +1,7 @@
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <ctime>
 
 using namespace std;
 
@@ -17,12 +19,15 @@ public:
         m_IsFaceUp = !m_IsFaceUp;
     }
     int GetValue() {
+        if (!m_IsFaceUp) {
+            return -1;
+        }
         return m_Rank < 10 ? m_Rank + 1 : 10;
     }
-    friend ostream& operator<< (ostream& out, const Card& card);
+    friend ostream& operator<< (ostream& out, Card& card);
 };
 
-ostream& operator<< (ostream& out, const Card& card) {
+ostream& operator<< (ostream& out, Card& card) {
     if (card.m_IsFaceUp) {
         string rnks[13] = {"ace", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "jack", "queen", "king"};
         string sts[4] = {"spades", "hearts", "clubs", "diamonds"};
@@ -35,7 +40,7 @@ ostream& operator<< (ostream& out, const Card& card) {
 }
 
 class Hand {
-private:
+protected:
     vector<Card*> m_Cards;
     int optimalAceCount(int cnt, int total) const {
         int count = cnt * 11;
@@ -65,10 +70,12 @@ public:
             for (it = m_Cards.begin(); it != m_Cards.end(); ++it) {
                 Card card = *(*it);
                 val = card.GetValue();
-                if (val != ace) {
-                    total += val;
-                } else {
-                    aceCnt++;
+                if (val >= 0) {
+                    if (val != ace) {
+                        total += val;
+                    } else {
+                        aceCnt++;
+                    }
                 }
             }
             if (aceCnt > 0) {
@@ -104,17 +111,16 @@ public:
     string GetName() const {
         return name;
     }
-    friend ostream& operator<< (ostream& out, const GenericPlayer& p);
+    friend ostream& operator<< (ostream& out, GenericPlayer& p);
 };
 
 ostream& operator<< (ostream& out, GenericPlayer& p) {
-    vector<Card*> cards = p.GetCards();
+    vector<Card*> cards = p.m_Cards;
     out << "Player " << p.GetName() << " cards: | ";
     if (cards.size() > 0) {
         vector<Card*>::iterator it;
         for (it = cards.begin(); it != cards.end(); ++it) {
-            Card card = *(*it);
-            out << card << " | ";
+            cout << *(*it) << " | ";
         }
     }
     out << endl << "Total scores: " << p.GetTotal();
@@ -127,7 +133,7 @@ public:
     Player(string n): GenericPlayer(n) { }
     bool IsHitting() {
         string ans;
-        cout << "Do you wanna card? (y/n): ";
+        cout << "Player " << GetName() << ", do you wanna card? (y/n): ";
         cin >> ans;
         
         return ans == "y";
@@ -154,27 +160,132 @@ public:
     }
 };
 
+class Deck : public Hand {
+public:
+    Deck() {
+        Populate();
+    }
+    void Populate() {
+        for (int i = spades; i <= diamonds; ++i) {
+            for (int j = ace; j <= king; ++j) {
+                suit s = static_cast<suit>(i);
+                ranks r = static_cast<ranks>(j);
+                Add(new Card(r, s, true));
+            }
+        }
+    }
+    void Shuffle() {
+        srand(static_cast<unsigned int>(time(0)));
+        random_shuffle(m_Cards.begin(), m_Cards.end());
+    }
+    void Deal(Hand& aHand) {
+        aHand.Add(m_Cards.back());
+        m_Cards.pop_back();
+    }
+    void AdditionalCards(GenericPlayer& aGenericPlayer) {
+        while (aGenericPlayer.IsHitting()) {
+            Deal(aGenericPlayer);
+            cout << aGenericPlayer << endl;
+            if (aGenericPlayer.IsBoosted()) {
+                aGenericPlayer.Bust();
+                break;
+            }
+        }        
+    }
+};
+
+class Game {
+private:
+    Deck deck;
+    House diller;
+    vector<Player> players;
+public:
+    Game(vector<string> n) {
+        vector<string>::iterator it;
+        for (it = n.begin(); it != n.end(); ++it) {
+            players.push_back(Player(*it));
+        }
+        deck.Shuffle();
+    }
+    void play() {
+        deck.Deal(diller);
+        deck.Deal(diller);
+        diller.FlipFirstCard();
+
+        vector<Player>::iterator it;
+        for (it = players.begin(); it != players.end(); ++it) {
+            deck.Deal(*it);
+            deck.Deal(*it);
+            cout << *it << endl;
+        }
+        cout << diller << endl;
+        
+        for (it = players.begin(); it != players.end(); ++it) {
+            deck.AdditionalCards(*it);
+        }
+        diller.FlipFirstCard();
+        deck.AdditionalCards(diller);
+
+        if (diller.IsBoosted()) {
+            for (it = players.begin(); it != players.end(); ++it) {
+                if (!(*it).IsBoosted()) {
+                    (*it).Win();
+                }
+            }
+        } else {
+            int dillerTotal = diller.GetTotal();
+            for (it = players.begin(); it != players.end(); ++it) {
+                if (!(*it).IsBoosted()) {
+                    if ((*it).GetTotal() > dillerTotal) {
+                        (*it).Win();
+                    } else if ((*it).GetTotal() < dillerTotal) {
+                        (*it).Lose();
+                    } else {
+                        (*it).Push();
+                    }
+                }
+            }
+        }
+        
+        for (it = players.begin(); it != players.end(); ++it) {
+            (*it).Clear();
+        }
+        diller.Clear();
+        deck.Clear();
+    }
+    void replay() {
+        deck.Populate();
+        deck.Shuffle();
+        play();
+    }
+};
+
 int main() {
-    Card card1(king, diamonds, false);
-    Card card2(seven, clubs, false);
-    Card card3(ten, hearts, false);
-    Card card4(ace, diamonds, false);
-    Card card5(queen, spades, false);
+    vector<string> names;
+    string name;
 
-    House house;
-    house.Add(&card1);
-    house.Add(&card2);
-    house.FlipFirstCard();
-    cout << house << endl;
+    while (true) {
+        cout << "Input Player name or type 'play' to start the game: ";
+        cin >> name;
+        if (name == "play" && names.size() > 0) {
+            break;
+        } else {
+            names.push_back(name);
+        }
+    }
 
-    Player player("John");
-    player.Add(&card3);
-    player.Add(&card4);
-    cout << player << endl;
-    if (player.IsHitting()) {
-        player.Add(&card5);
-        cout << player << endl;
-        player.Win();
+    Game game(names);
+
+    string answer;
+    while (true) {
+        game.play();
+        cout << "Wanna play again? (y/n): ";
+        cin >> answer;
+        if (answer == "y") {
+            game.replay();
+        } else {
+            break;
+        }
     }
 
     return 0;
